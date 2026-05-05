@@ -1,0 +1,32 @@
+# Python
+__pycache__/
+*.py[cod]
+*.so
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environment
+.venv/
+venv/
+env/
+
+# YOLO model weights (downloaded on first run)
+*.pt
+*.onnx
+
+# User data (gestures + choreographies are saved here by the app)
+*.pkl
+*.msync.json
+*.templates.pkl
+
+# Qt / system
+*.qm
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp

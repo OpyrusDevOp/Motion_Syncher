@@ -1,0 +1,8 @@
+PySide6>=6.6.0
+opencv-python>=4.8.0
+ultralytics>=8.2.0
+numpy>=1.24.0
+pynput>=1.7.6
+pygame>=2.5.0
+# Optional for OAK cameras (Phase B):
+# depthai>=2.24.0
