@@ -2,8 +2,9 @@ import numpy as np
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QLineEdit, QLabel, QGroupBox, QFormLayout, QDoubleSpinBox,
+    QSpinBox,
 )
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QTimer
 
 from gui.camera_thread import CameraThread
 
@@ -32,6 +33,17 @@ class ActionLibraryWidget(QWidget):
         self.name_input = QLineEdit()
         self.name_input.setPlaceholderText("Gesture name…")
         rec_layout.addWidget(self.name_input)
+
+        delay_row = QHBoxLayout()
+        delay_row.addWidget(QLabel("Delay before recording:"))
+        self.delay_spin = QSpinBox()
+        self.delay_spin.setRange(0, 10)
+        self.delay_spin.setSuffix(" s")
+        self.delay_spin.setValue(0)
+        self.delay_spin.setFixedWidth(64)
+        delay_row.addWidget(self.delay_spin)
+        delay_row.addStretch()
+        rec_layout.addLayout(delay_row)
 
         btn_row = QHBoxLayout()
         self.record_btn = QPushButton("⏺  Record")
@@ -92,6 +104,13 @@ class ActionLibraryWidget(QWidget):
         )
         camera_thread.segment_analyzed.connect(self._on_segment_analyzed)
 
+        self._pending_name: str = ""
+        self._last_recorded_name: str = ""
+        self._countdown_left: int = 0
+        self._countdown_timer = QTimer(self)
+        self._countdown_timer.setInterval(1000)
+        self._countdown_timer.timeout.connect(self._tick_countdown)
+
         self._refresh_list()
 
     # ------------------------------------------------------------------
@@ -101,17 +120,38 @@ class ActionLibraryWidget(QWidget):
         if not name:
             self._set_status("Enter a gesture name first.", "red")
             return
-        self._ct.start_recording(name)
-        self._set_status(f"Recording '{name}' — perform the gesture...", "orange")
+        self._begin_with_delay(name)
 
     def _add_take(self):
         item = self.gesture_list.currentItem()
         if item is None:
             self._set_status("Select a gesture first.", "red")
             return
-        name = item.data(_USER_ROLE)
+        self._begin_with_delay(item.data(_USER_ROLE))
+
+    def _begin_with_delay(self, name: str) -> None:
+        self._pending_name = name
+        delay = self.delay_spin.value()
+        if delay > 0:
+            self._countdown_left = delay
+            self._set_status(f"Starting in {delay}s…", "#e67e22")
+            self._countdown_timer.start()
+        else:
+            self._fire_recording()
+
+    def _tick_countdown(self) -> None:
+        self._countdown_left -= 1
+        if self._countdown_left > 0:
+            self._set_status(f"Starting in {self._countdown_left}s…", "#e67e22")
+        else:
+            self._countdown_timer.stop()
+            self._fire_recording()
+
+    def _fire_recording(self) -> None:
+        name = self._pending_name
+        self._last_recorded_name = name
         self._ct.start_recording(name)
-        self._set_status(f"Recording extra take for '{name}'...", "orange")
+        self._set_status(f"Recording '{name}' — perform the gesture…", "orange")
 
     def _delete_gesture(self):
         item = self.gesture_list.currentItem()
@@ -126,7 +166,15 @@ class ActionLibraryWidget(QWidget):
         seq: np.ndarray = sequence  # type: ignore[assignment]
         self._set_status(f"Saved! ({len(seq)} frames)", "green")
         self._refresh_list()
+        self._reselect(self._last_recorded_name)
         self.gesture_list_changed.emit()
+
+    def _reselect(self, name: str) -> None:
+        for i in range(self.gesture_list.count()):
+            item = self.gesture_list.item(i)
+            if item.data(_USER_ROLE) == name:
+                self.gesture_list.setCurrentItem(item)
+                return
 
     def _refresh_list(self):
         self.gesture_list.clear()
