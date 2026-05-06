@@ -21,14 +21,16 @@ def _detect_device() -> tuple[str, str]:
         if torch.cuda.is_available():
             name = torch.cuda.get_device_name(0)
             return "cuda", f"cuda — {name}"
-        # torch is present but no CUDA/ROCm compute detected
+
         build = torch.__version__
-        # Check whether ROCm kernel is loaded even though PyTorch can't use it
-        import shutil
-        has_rocm_bin  = shutil.which("rocminfo") is not None
-        has_kfd       = __import__("pathlib").Path("/dev/kfd").exists()
-        if has_rocm_bin or has_kfd:
-            return "cpu", f"cpu (ROCm present but PyTorch build is {build} — needs +rocm build)"
+        is_rocm_build = "rocm" in build.lower()
+        has_kfd = __import__("pathlib").Path("/dev/kfd").exists()
+
+        if is_rocm_build and has_kfd:
+            # ROCm build + KFD present but HSA failed → GPU not supported by this ROCm version
+            return "cpu", "cpu (ROCm build — GPU incompatible with ROCm 7.2, gfx803 dropped)"
+        if has_kfd and not is_rocm_build:
+            return "cpu", f"cpu (ROCm present but wrong PyTorch build: {build})"
     except ImportError:
         pass
     return "cpu", "cpu"
