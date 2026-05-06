@@ -32,6 +32,12 @@ class MainWindow(QMainWindow):
         self.engine = ChoreographyEngine(self)
         self._load_plugins()
 
+        # Debounced autosave: fires 1 s after the last change
+        self._save_timer = QTimer(self)
+        self._save_timer.setSingleShot(True)
+        self._save_timer.setInterval(1000)
+        self._save_timer.timeout.connect(self._autosave)
+
         self._build_ui()
         self._connect_signals()
         self._start_console_flush()
@@ -58,13 +64,16 @@ class MainWindow(QMainWindow):
         tb.setMovable(False)
         self.addToolBar(tb)
 
-        self.act_start = QAction("▶  Start", self)
-        self.act_stop  = QAction("⏹  Stop",  self)
-        self.act_reset = QAction("↺  Reset", self)
+        self.act_start  = QAction("▶  Start",  self)
+        self.act_stop   = QAction("⏹  Stop",   self)
+        self.act_reset  = QAction("↺  Reset",  self)
+        self.act_reload = QAction("⟳  Reload", self)
+        self.act_reload.setToolTip("Reload gestures and choreography from disk")
         tb.addAction(self.act_start)
         tb.addAction(self.act_stop)
         tb.addSeparator()
         tb.addAction(self.act_reset)
+        tb.addAction(self.act_reload)
         tb.addSeparator()
         tb.addWidget(QLabel("  Camera: "))
         self.camera_combo = QComboBox()
@@ -173,11 +182,14 @@ class MainWindow(QMainWindow):
         self.engine.choreography_done.connect(self._on_choreography_done)
 
         self.chor_editor.choreography_changed.connect(self._sync_choreography)
+        self.chor_editor.choreography_changed.connect(self._schedule_autosave)
         self.action_lib.gesture_list_changed.connect(self._update_gesture_list)
+        self.action_lib.gesture_list_changed.connect(self._schedule_autosave)
 
         self.act_start.triggered.connect(self._start_camera)
         self.act_stop.triggered.connect(self._stop_camera)
         self.act_reset.triggered.connect(self._reset)
+        self.act_reload.triggered.connect(self._manual_reload)
 
         self.quick_arm.armed.connect(self._on_quick_armed)
         self.quick_arm.disarmed.connect(self._on_quick_disarmed)
@@ -336,6 +348,14 @@ class MainWindow(QMainWindow):
     # Persistent storage
     # ------------------------------------------------------------------
 
+    def _schedule_autosave(self) -> None:
+        """Restart the 1 s debounce timer; actual save fires when it expires."""
+        self._save_timer.start()
+
+    def _manual_reload(self) -> None:
+        self._autoload()
+        self.statusBar().showMessage("Reloaded from disk", 3000)
+
     def _auto_data_dir(self) -> Path:
         base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
         p = Path(base) / "default"
@@ -360,6 +380,7 @@ class MainWindow(QMainWindow):
             for name, tpl in self.camera_thread.recognizer._templates.items()
         }
         (d / "templates.pkl").write_bytes(pickle.dumps(templates_data))
+        self.statusBar().showMessage("Saved", 2000)
 
     def _autoload(self) -> None:
         d = self._auto_data_dir()
@@ -373,7 +394,10 @@ class MainWindow(QMainWindow):
             for name, sequences in templates_data.items():
                 for seq in sequences:
                     rec.add_template(name, seq)
-            self._update_gesture_list()
+
+        # Always refresh gesture widgets so they reflect in-memory templates
+        self._update_gesture_list()
+        self.action_lib._refresh_list()
 
         if proj_file.exists():
             try:
