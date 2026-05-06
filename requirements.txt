@@ -3,6 +3,6 @@ opencv-python>=4.8.0
 ultralytics>=8.2.0
 numpy>=1.24.0
 pynput>=1.7.6
-pygame>=2.5.0
+# audio playback via system player (mpv, ffplay, or cvlc) — no Python package needed
 # Optional for OAK cameras (Phase B):
 # depthai>=2.24.0
