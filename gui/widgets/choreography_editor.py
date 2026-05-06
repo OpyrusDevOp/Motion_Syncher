@@ -32,18 +32,21 @@ class ChoreographyEditorWidget(QWidget):
         layout.addWidget(self.list_widget)
 
         btn_row = QHBoxLayout()
-        self.add_btn = QPushButton("+ Add")
+        self.add_btn    = QPushButton("+ Add")
+        self.edit_btn   = QPushButton("Edit")
         self.remove_btn = QPushButton("Remove")
-        self.up_btn = QPushButton("▲")
-        self.down_btn = QPushButton("▼")
-        for b in (self.add_btn, self.remove_btn, self.up_btn, self.down_btn):
+        self.up_btn     = QPushButton("▲")
+        self.down_btn   = QPushButton("▼")
+        for b in (self.add_btn, self.edit_btn, self.remove_btn, self.up_btn, self.down_btn):
             btn_row.addWidget(b)
         layout.addLayout(btn_row)
 
         self.add_btn.clicked.connect(self._add_step)
+        self.edit_btn.clicked.connect(self._edit_step)
         self.remove_btn.clicked.connect(self._remove_step)
         self.up_btn.clicked.connect(self._move_up)
         self.down_btn.clicked.connect(self._move_down)
+        self.list_widget.itemDoubleClicked.connect(lambda _: self._edit_step())
 
     # ------------------------------------------------------------------
     # Public API
@@ -90,6 +93,21 @@ class ChoreographyEditorWidget(QWidget):
             if pair:
                 self._pairs.append(pair)
                 self._refresh()
+                self.choreography_changed.emit()
+
+    def _edit_step(self):
+        row = self.list_widget.currentRow()
+        if not (0 <= row < len(self._pairs)):
+            return
+        from gui.widgets.pair_dialog import PairDialog
+        dlg = PairDialog(self._available_gestures, self)
+        dlg.load_pair(self._pairs[row])
+        if dlg.exec() == QDialog.DialogCode.Accepted:
+            pair = dlg.get_pair()
+            if pair:
+                self._pairs[row] = pair
+                self._refresh()
+                self.list_widget.setCurrentRow(row)
                 self.choreography_changed.emit()
 
     def _remove_step(self):

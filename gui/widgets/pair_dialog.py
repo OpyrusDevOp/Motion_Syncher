@@ -51,6 +51,23 @@ class PairDialog(QDialog):
         btns.rejected.connect(self.reject)
         layout.addRow(btns)
 
+    def load_pair(self, pair: Pair) -> None:
+        """Pre-populate the dialog with an existing pair for editing."""
+        idx = self.gesture_combo.findText(pair.gesture)
+        if idx >= 0:
+            self.gesture_combo.setCurrentIndex(idx)
+
+        tid = pair.function.TYPE_ID
+        for i in range(self.func_type.count()):
+            if self.func_type.itemData(i) == tid:
+                self.func_type.setCurrentIndex(i)
+                self.stack.setCurrentIndex(i)
+                break
+
+        self._config_pages[self.func_type.currentIndex()].load_values(
+            pair.function.to_dict()
+        )
+
     def get_pair(self) -> Pair | None:
         gesture = self.gesture_combo.currentText()
         if not gesture or not self.gesture_combo.isEnabled():
