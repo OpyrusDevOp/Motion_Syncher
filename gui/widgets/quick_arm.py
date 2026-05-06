@@ -5,16 +5,14 @@ from PySide6.QtWidgets import (
 from PySide6.QtCore import Signal
 
 from core.functions.base import Function
-from core.functions.shell_cmd import ShellFunction
-from core.functions.audio import AudioFunction
-from core.functions.keystroke import KeystrokeFunction
-from core.functions.console_write import ConsoleWriteFunction
+from core.functions import get_registry
 
 
 class QuickArmWidget(QWidget):
     """
     Toolbar-style widget: pick one gesture → one function and arm it instantly.
-    When armed the binding fires on every detection (FREE mode alongside choreography).
+    Shows the first config field inline; multi-field functions fall back to
+    their schema defaults for the remaining fields.
     """
 
     armed = Signal(str, object)   # gesture_name, Function instance
@@ -36,18 +34,19 @@ class QuickArmWidget(QWidget):
         layout.addWidget(QLabel("→"))
 
         self.func_combo = QComboBox()
-        self.func_combo.addItems(["Shell", "Audio", "Keystroke", "Console"])
+        registry = get_registry()
+        for tid, cls in registry.items():
+            self.func_combo.addItem(cls.DISPLAY_NAME or tid, userData=tid)
         layout.addWidget(self.func_combo)
 
         self.config_input = QLineEdit()
-        self.config_input.setPlaceholderText("command / file / key / text")
         self.config_input.setMinimumWidth(200)
         layout.addWidget(self.config_input)
 
         self._browse_btn = QPushButton("…")
         self._browse_btn.setFixedWidth(28)
         self._browse_btn.setVisible(False)
-        self._browse_btn.clicked.connect(self._browse_audio)
+        self._browse_btn.clicked.connect(self._browse_file)
         layout.addWidget(self._browse_btn)
 
         self.arm_btn = QPushButton("Arm")
@@ -57,6 +56,7 @@ class QuickArmWidget(QWidget):
         layout.addWidget(self.arm_btn)
 
         self.func_combo.currentIndexChanged.connect(self._on_func_type_changed)
+        self._on_func_type_changed(0)
 
     # ------------------------------------------------------------------
     # Public API
@@ -75,21 +75,29 @@ class QuickArmWidget(QWidget):
 
     # ------------------------------------------------------------------
 
-    def _on_func_type_changed(self, idx: int) -> None:
-        self._browse_btn.setVisible(idx == 1)  # Audio
-        placeholders = [
-            "shell command…",
-            "path/to/audio.mp3",
-            "e.g. ctrl+c  |  media_play_pause",
-            "text to print",
-        ]
-        self.config_input.setPlaceholderText(placeholders[idx])
+    def _first_field(self) -> dict | None:
+        tid = self.func_combo.currentData()
+        cls = get_registry().get(tid)
+        if cls is None:
+            return None
+        schema = cls.config_schema()
+        return schema[0] if schema else None
 
-    def _browse_audio(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(
-            self, "Select Audio File", "",
-            "Audio (*.mp3 *.wav *.ogg *.flac *.m4a *.aac)"
+    def _on_func_type_changed(self, _idx: int) -> None:
+        field = self._first_field()
+        if field is None:
+            self.config_input.setPlaceholderText("")
+            self._browse_btn.setVisible(False)
+            return
+        self.config_input.setPlaceholderText(
+            field.get("placeholder", field.get("label", ""))
         )
+        self._browse_btn.setVisible(field.get("type") == "file")
+
+    def _browse_file(self) -> None:
+        field = self._first_field()
+        filt  = field.get("filter", "") if field else ""
+        path, _ = QFileDialog.getOpenFileName(self, "Select File", "", filt)
         if path:
             self.config_input.setText(path)
 
@@ -111,12 +119,16 @@ class QuickArmWidget(QWidget):
             self.disarmed.emit()
 
     def _build_function(self) -> Function | None:
-        text = self.config_input.text().strip()
-        idx = self.func_combo.currentIndex()
-        if idx == 0:
-            return ShellFunction(text)
-        if idx == 1:
-            return AudioFunction(text)
-        if idx == 2:
-            return KeystrokeFunction(text)
-        return ConsoleWriteFunction(text)
+        tid = self.func_combo.currentData()
+        cls = get_registry().get(tid)
+        if cls is None:
+            return None
+        schema = cls.config_schema()
+        if not schema:
+            return cls()
+        # Fill the first field from the inline input; rest get schema defaults
+        first_key = schema[0]["key"]
+        kwargs: dict = {first_key: self.config_input.text().strip()}
+        for field in schema[1:]:
+            kwargs[field["key"]] = field.get("default", "")
+        return cls(**kwargs)
