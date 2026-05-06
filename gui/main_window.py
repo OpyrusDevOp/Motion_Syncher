@@ -13,7 +13,7 @@ from PySide6.QtCore import Qt, QTimer, QSettings, QStandardPaths
 from core.camera.webcam import WebcamCamera
 from core.choreography.engine import ChoreographyEngine, EngineMode
 from core.choreography.models import Choreography, Pair
-from core.functions import function_from_dict
+from core.functions import function_from_dict, load_user_plugins
 from core.functions.console_write import output_queue
 from gui.camera_thread import CameraThread
 from gui.widgets.camera_preview import CameraPreviewWidget
@@ -30,12 +30,23 @@ class MainWindow(QMainWindow):
 
         self.camera_thread = CameraThread()
         self.engine = ChoreographyEngine(self)
+        self._load_plugins()
 
         self._build_ui()
         self._connect_signals()
         self._start_console_flush()
         self._restore_state()
         self._autoload()
+
+    # ------------------------------------------------------------------
+    # Plugin loading
+    # ------------------------------------------------------------------
+
+    def _load_plugins(self) -> None:
+        plugins_dir = Path(__file__).parent.parent / "plugins"
+        found = load_user_plugins([plugins_dir])
+        if found:
+            print(f"[Plugins] registered: {found}")
 
     # ------------------------------------------------------------------
     # UI construction

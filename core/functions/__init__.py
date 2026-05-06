@@ -19,6 +19,11 @@ def get_registry() -> dict[str, type[Function]]:
     return dict(_REGISTRY)
 
 
+def load_user_plugins(dirs: list) -> list[str]:
+    from .plugin_loader import load_user_plugins as _load
+    return _load(dirs)
+
+
 def function_from_dict(data: dict) -> Function:
     cls = _REGISTRY.get(data["type"])
     if cls is None:
