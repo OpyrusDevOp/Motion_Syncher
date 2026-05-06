@@ -3,7 +3,18 @@ from .base import Function
 
 
 class ShellFunction(Function):
-    def __init__(self, command: str):
+    TYPE_ID = "shell"
+    DISPLAY_NAME = "Shell Command"
+    DESCRIPTION = "Run a shell command in the background"
+
+    @classmethod
+    def config_schema(cls) -> list[dict]:
+        return [
+            {"key": "command", "label": "Command", "type": "text",
+             "placeholder": "e.g. osascript -e 'set volume 5'", "default": ""},
+        ]
+
+    def __init__(self, command: str = ""):
         self.command = command
 
     @property
@@ -15,10 +26,3 @@ class ShellFunction(Function):
         if not self.command.strip():
             return
         subprocess.Popen(self.command, shell=True)
-
-    def to_dict(self) -> dict:
-        return {"type": "shell", "command": self.command}
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "ShellFunction":
-        return cls(data["command"])

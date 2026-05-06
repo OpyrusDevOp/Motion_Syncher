@@ -21,10 +21,25 @@ def _ensure_mixer() -> bool:
 class AudioFunction(Function):
     """Play / stop / toggle a music file via pygame.mixer."""
 
-    def __init__(self, file_path: str, volume: float = 1.0, action: str = "play"):
+    TYPE_ID = "audio"
+    DISPLAY_NAME = "Play Audio"
+    DESCRIPTION = "Play, stop, or toggle a music file"
+
+    @classmethod
+    def config_schema(cls) -> list[dict]:
+        return [
+            {"key": "file_path", "label": "Audio file", "type": "file",
+             "filter": "Audio (*.mp3 *.wav *.ogg *.flac *.m4a *.aac)", "default": ""},
+            {"key": "action", "label": "Action", "type": "select",
+             "options": ["play", "stop", "toggle"], "default": "play"},
+            {"key": "volume", "label": "Volume", "type": "float",
+             "min": 0.0, "max": 1.0, "step": 0.05, "default": 1.0},
+        ]
+
+    def __init__(self, file_path: str = "", action: str = "play", volume: float = 1.0):
         self.file_path = file_path
-        self.volume = max(0.0, min(1.0, volume))
         self.action = action  # "play" | "stop" | "toggle"
+        self.volume = max(0.0, min(1.0, volume))
 
     @property
     def name(self) -> str:
@@ -52,15 +67,3 @@ class AudioFunction(Function):
         pygame.mixer.music.load(self.file_path)
         pygame.mixer.music.set_volume(self.volume)
         pygame.mixer.music.play()
-
-    def to_dict(self) -> dict:
-        return {
-            "type": "audio",
-            "file_path": self.file_path,
-            "volume": self.volume,
-            "action": self.action,
-        }
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "AudioFunction":
-        return cls(data["file_path"], data.get("volume", 1.0), data.get("action", "play"))

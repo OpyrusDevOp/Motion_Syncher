@@ -40,7 +40,18 @@ def _parse_key(token: str):
 class KeystrokeFunction(Function):
     """Send a key sequence such as 'ctrl+c', 'space', 'media_play_pause'."""
 
-    def __init__(self, key_sequence: str):
+    TYPE_ID = "keystroke"
+    DISPLAY_NAME = "Keystroke"
+    DESCRIPTION = "Send a key combination (e.g. ctrl+c, media_play_pause)"
+
+    @classmethod
+    def config_schema(cls) -> list[dict]:
+        return [
+            {"key": "key_sequence", "label": "Key sequence", "type": "text",
+             "placeholder": "e.g. ctrl+shift+t  or  media_play_pause", "default": ""},
+        ]
+
+    def __init__(self, key_sequence: str = ""):
         self.key_sequence = key_sequence
 
     @property
@@ -65,10 +76,3 @@ class KeystrokeFunction(Function):
         kb.tap(main_key)
         for mod in reversed(modifiers):
             kb.release(mod)
-
-    def to_dict(self) -> dict:
-        return {"type": "keystroke", "key_sequence": self.key_sequence}
-
-    @classmethod
-    def from_dict(cls, data: dict) -> "KeystrokeFunction":
-        return cls(data["key_sequence"])

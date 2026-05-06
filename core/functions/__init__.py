@@ -4,12 +4,20 @@ from .shell_cmd import ShellFunction
 from .keystroke import KeystrokeFunction
 from .console_write import ConsoleWriteFunction
 
-_REGISTRY: dict[str, type[Function]] = {
-    "audio": AudioFunction,
-    "shell": ShellFunction,
-    "keystroke": KeystrokeFunction,
-    "console": ConsoleWriteFunction,
-}
+_BUILTIN: list[type[Function]] = [
+    AudioFunction,
+    ShellFunction,
+    KeystrokeFunction,
+    ConsoleWriteFunction,
+]
+
+# TYPE_ID → class; populated at module load, extended by load_user_plugins()
+_REGISTRY: dict[str, type[Function]] = {cls.TYPE_ID: cls for cls in _BUILTIN}
+
+
+def get_registry() -> dict[str, type[Function]]:
+    return dict(_REGISTRY)
+
 
 def function_from_dict(data: dict) -> Function:
     cls = _REGISTRY.get(data["type"])
