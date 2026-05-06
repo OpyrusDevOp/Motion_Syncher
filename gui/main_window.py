@@ -183,8 +183,10 @@ class MainWindow(QMainWindow):
 
         self.chor_editor.choreography_changed.connect(self._sync_choreography)
         self.chor_editor.choreography_changed.connect(self._schedule_autosave)
+        self.chor_editor.reload_requested.connect(self._manual_reload)
         self.action_lib.gesture_list_changed.connect(self._update_gesture_list)
         self.action_lib.gesture_list_changed.connect(self._schedule_autosave)
+        self.action_lib.reload_requested.connect(self._manual_reload)
 
         self.act_start.triggered.connect(self._start_camera)
         self.act_stop.triggered.connect(self._stop_camera)

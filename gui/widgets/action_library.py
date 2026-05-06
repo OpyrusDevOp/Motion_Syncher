@@ -13,6 +13,7 @@ _USER_ROLE = Qt.ItemDataRole.UserRole
 
 class ActionLibraryWidget(QWidget):
     gesture_list_changed = Signal()
+    reload_requested = Signal()
 
     def __init__(self, camera_thread: CameraThread, parent=None):
         super().__init__(parent)
@@ -20,7 +21,16 @@ class ActionLibraryWidget(QWidget):
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
-        layout.addWidget(QLabel("<b>Gesture Library</b>"))
+
+        header = QHBoxLayout()
+        header.addWidget(QLabel("<b>Gesture Library</b>"))
+        header.addStretch()
+        self.reload_btn = QPushButton("⟳")
+        self.reload_btn.setFixedWidth(28)
+        self.reload_btn.setToolTip("Reload gestures from disk")
+        self.reload_btn.clicked.connect(self.reload_requested.emit)
+        header.addWidget(self.reload_btn)
+        layout.addLayout(header)
 
         self.gesture_list = QListWidget()
         self.gesture_list.setAlternatingRowColors(True)

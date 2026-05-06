@@ -3,6 +3,7 @@ from PySide6.QtWidgets import (
     QPushButton, QCheckBox, QLabel, QDialog,
 )
 from PySide6.QtCore import Signal, Qt
+
 from PySide6.QtGui import QColor
 
 from core.choreography.models import Choreography, Pair
@@ -10,6 +11,7 @@ from core.choreography.models import Choreography, Pair
 
 class ChoreographyEditorWidget(QWidget):
     choreography_changed = Signal()
+    reload_requested = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -22,6 +24,11 @@ class ChoreographyEditorWidget(QWidget):
         header = QHBoxLayout()
         header.addWidget(QLabel("<b>Choreography</b>"))
         header.addStretch()
+        self.reload_btn = QPushButton("⟳")
+        self.reload_btn.setFixedWidth(28)
+        self.reload_btn.setToolTip("Reload choreography from disk")
+        self.reload_btn.clicked.connect(self.reload_requested.emit)
+        header.addWidget(self.reload_btn)
         self.loop_check = QCheckBox("Loop")
         self.loop_check.stateChanged.connect(lambda _: self.choreography_changed.emit())
         header.addWidget(self.loop_check)
