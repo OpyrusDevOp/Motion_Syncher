@@ -108,10 +108,17 @@ class ActionLibraryWidget(QWidget):
         )
         perf_form.addRow("Inference size:", self.imgsz_combo)
 
-        device = camera_thread.device
-        device_lbl = QLabel(device)
-        color = "#27ae60" if device == "cuda" else "#e67e22"
-        device_lbl.setStyleSheet(f"color: {color}; font-weight: bold;")
+        from core.har.pose_detector import _detect_device
+        _dev, _dev_status = _detect_device()
+        device_lbl = QLabel(_dev_status)
+        if _dev == "cuda":
+            color = "#27ae60"   # green — GPU active
+        elif "ROCm" in _dev_status:
+            color = "#e74c3c"   # red — ROCm present but unusable
+        else:
+            color = "#e67e22"   # orange — plain CPU
+        device_lbl.setStyleSheet(f"color: {color};")
+        device_lbl.setWordWrap(True)
         perf_form.addRow("Compute device:", device_lbl)
 
         layout.addWidget(perf_box)

@@ -14,14 +14,28 @@ class PoseResult:
     landmarks: list[tuple[float, float, float]]
 
 
-def _auto_device() -> str:
+def _detect_device() -> tuple[str, str]:
+    """Return (device_string, human_readable_status)."""
     try:
         import torch
         if torch.cuda.is_available():
-            return "cuda"
+            name = torch.cuda.get_device_name(0)
+            return "cuda", f"cuda — {name}"
+        # torch is present but no CUDA/ROCm compute detected
+        build = torch.__version__
+        # Check whether ROCm kernel is loaded even though PyTorch can't use it
+        import shutil
+        has_rocm_bin  = shutil.which("rocminfo") is not None
+        has_kfd       = __import__("pathlib").Path("/dev/kfd").exists()
+        if has_rocm_bin or has_kfd:
+            return "cpu", f"cpu (ROCm present but PyTorch build is {build} — needs +rocm build)"
     except ImportError:
         pass
-    return "cpu"
+    return "cpu", "cpu"
+
+
+def _auto_device() -> str:
+    return _detect_device()[0]
 
 
 class PoseDetector:
