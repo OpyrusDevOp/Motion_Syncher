@@ -1,4 +1,5 @@
 # Motion Syncher
+<img width="1876" height="990" alt="2026-05-06-165159_hyprshot" src="https://github.com/user-attachments/assets/1536d55b-970c-48be-910f-c0c478d943fd" />
 
 A desktop application that maps recognized human body gestures to triggered actions — play audio, run shell commands, send keystrokes, or print to a console. Designed for **live shows and spectacles**, with a choreography sequencer that advances step-by-step as performers execute gestures on stage.
 
