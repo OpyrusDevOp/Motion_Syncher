@@ -27,6 +27,23 @@ class CameraThread(QThread):
         self._running = False
         self._recording = False
         self._record_name = ""
+        # Performance knobs — updated live from GUI
+        self.skip_frames: int = 2   # run YOLO every N frames
+        self._frame_idx: int = 0
+        self._last_pose: object = None
+        self._last_annotated: np.ndarray | None = None
+
+    @property
+    def device(self) -> str:
+        return self._pose.device
+
+    @property
+    def imgsz(self) -> int:
+        return self._pose.imgsz
+
+    @imgsz.setter
+    def imgsz(self, value: int) -> None:
+        self._pose.imgsz = value
 
     # ------------------------------------------------------------------
     # Public API (called from the main thread)
@@ -77,7 +94,15 @@ class CameraThread(QThread):
                 self.msleep(5)
                 continue
 
-            pose_result, annotated = self._pose.detect(frame)
+            self._frame_idx += 1
+            if self._frame_idx % max(1, self.skip_frames) == 0:
+                pose_result, annotated = self._pose.detect(frame)
+                self._last_pose = pose_result
+                self._last_annotated = annotated
+            else:
+                pose_result = self._last_pose
+                annotated = self._last_annotated if self._last_annotated is not None else frame
+
             features = normalize(pose_result.landmarks) if pose_result else None
 
             segment = self._segmenter.update(features)

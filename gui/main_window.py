@@ -421,9 +421,11 @@ class MainWindow(QMainWindow):
         s.setValue("window/geometry",      self.saveGeometry())
         s.setValue("camera/index",         self.camera_combo.currentIndex())
         rec = self.action_lib.recognition_settings()
-        s.setValue("recognition/threshold", rec["threshold"])
-        s.setValue("recognition/cooldown",  rec["cooldown"])
-        s.setValue("recognition/motion",    rec["motion"])
+        s.setValue("recognition/threshold",   rec["threshold"])
+        s.setValue("recognition/cooldown",    rec["cooldown"])
+        s.setValue("recognition/motion",      rec["motion"])
+        s.setValue("performance/skip_frames", rec["skip_frames"])
+        s.setValue("performance/imgsz",       rec["imgsz"])
 
     def _restore_state(self) -> None:
         s = QSettings()
@@ -434,9 +436,11 @@ class MainWindow(QMainWindow):
         if 0 <= cam < self.camera_combo.count():
             self.camera_combo.setCurrentIndex(cam)
         rec = {
-            "threshold": s.value("recognition/threshold", 0.30, type=float),
-            "cooldown":  s.value("recognition/cooldown",  1.5,  type=float),
-            "motion":    s.value("recognition/motion",    0.02, type=float),
+            "threshold":   s.value("recognition/threshold",   0.30, type=float),
+            "cooldown":    s.value("recognition/cooldown",     1.5,  type=float),
+            "motion":      s.value("recognition/motion",       0.02, type=float),
+            "skip_frames": s.value("performance/skip_frames",  2,    type=int),
+            "imgsz":       s.value("performance/imgsz",        320,  type=int),
         }
         self.action_lib.apply_recognition_settings(rec)
 

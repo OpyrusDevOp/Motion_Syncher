@@ -2,7 +2,7 @@ import numpy as np
 from PySide6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QListWidget, QListWidgetItem,
     QPushButton, QLineEdit, QLabel, QGroupBox, QFormLayout, QDoubleSpinBox,
-    QSpinBox,
+    QSpinBox, QComboBox,
 )
 from PySide6.QtCore import Signal, Qt, QTimer
 
@@ -85,6 +85,37 @@ class ActionLibraryWidget(QWidget):
 
         layout.addWidget(cfg_box)
 
+        # --- Performance settings ---
+        perf_box = QGroupBox("Performance")
+        perf_form = QFormLayout(perf_box)
+
+        self.skip_spin = QSpinBox()
+        self.skip_spin.setRange(1, 6)
+        self.skip_spin.setValue(2)
+        self.skip_spin.setToolTip(
+            "Run YOLO every N frames. 1 = every frame (max CPU). "
+            "2–3 = good balance. Higher = less CPU, less responsive skeleton."
+        )
+        perf_form.addRow("Frame skip:", self.skip_spin)
+
+        self.imgsz_combo = QComboBox()
+        for size in (192, 256, 320, 416, 640):
+            self.imgsz_combo.addItem(f"{size} px", userData=size)
+        self.imgsz_combo.setCurrentIndex(2)   # 320 default
+        self.imgsz_combo.setToolTip(
+            "YOLO inference resolution. Smaller = much less CPU/GPU, "
+            "slightly lower pose accuracy."
+        )
+        perf_form.addRow("Inference size:", self.imgsz_combo)
+
+        device = camera_thread.device
+        device_lbl = QLabel(device)
+        color = "#27ae60" if device == "cuda" else "#e67e22"
+        device_lbl.setStyleSheet(f"color: {color}; font-weight: bold;")
+        perf_form.addRow("Compute device:", device_lbl)
+
+        layout.addWidget(perf_box)
+
         # --- Last segment diagnostic ---
         self.segment_lbl = QLabel("Last segment: —")
         self.segment_lbl.setStyleSheet("color: gray; font-size: 11px;")
@@ -97,6 +128,8 @@ class ActionLibraryWidget(QWidget):
         self.threshold_spin.valueChanged.connect(self._apply_settings)
         self.cooldown_spin.valueChanged.connect(self._apply_settings)
         self.motion_spin.valueChanged.connect(self._apply_settings)
+        self.skip_spin.valueChanged.connect(self._apply_perf_settings)
+        self.imgsz_combo.currentIndexChanged.connect(self._apply_perf_settings)
 
         camera_thread.recording_complete.connect(self._on_recording_complete)
         camera_thread.recording_failed.connect(
@@ -189,6 +222,10 @@ class ActionLibraryWidget(QWidget):
         self._ct.recognizer.cooldown_seconds = self.cooldown_spin.value()
         self._ct.segmenter.quiet_threshold = self.motion_spin.value()
 
+    def _apply_perf_settings(self):
+        self._ct.skip_frames = self.skip_spin.value()
+        self._ct.imgsz = self.imgsz_combo.currentData()
+
     def _on_segment_analyzed(self, best_name: str, best_dist: float) -> None:
         thr = self._ct.recognizer.threshold
         if best_dist == float("inf"):
@@ -208,16 +245,25 @@ class ActionLibraryWidget(QWidget):
 
     def recognition_settings(self) -> dict:
         return {
-            "threshold": self.threshold_spin.value(),
-            "cooldown":  self.cooldown_spin.value(),
-            "motion":    self.motion_spin.value(),
+            "threshold":   self.threshold_spin.value(),
+            "cooldown":    self.cooldown_spin.value(),
+            "motion":      self.motion_spin.value(),
+            "skip_frames": self.skip_spin.value(),
+            "imgsz":       self.imgsz_combo.currentData(),
         }
 
     def apply_recognition_settings(self, s: dict) -> None:
-        self.threshold_spin.setValue(s.get("threshold", 0.15))
-        self.cooldown_spin.setValue(s.get("cooldown",   1.5))
-        self.motion_spin.setValue(s.get("motion",       0.02))
+        self.threshold_spin.setValue(s.get("threshold",   0.30))
+        self.cooldown_spin.setValue(s.get("cooldown",     1.5))
+        self.motion_spin.setValue(s.get("motion",         0.02))
+        skip = s.get("skip_frames", 2)
+        self.skip_spin.setValue(skip)
+        imgsz = s.get("imgsz", 320)
+        idx = self.imgsz_combo.findData(imgsz)
+        if idx >= 0:
+            self.imgsz_combo.setCurrentIndex(idx)
         self._apply_settings()
+        self._apply_perf_settings()
 
     def _set_status(self, text: str, color: str):
         self.status_lbl.setText(text)

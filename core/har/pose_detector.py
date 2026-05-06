@@ -14,15 +14,40 @@ class PoseResult:
     landmarks: list[tuple[float, float, float]]
 
 
+def _auto_device() -> str:
+    try:
+        import torch
+        if torch.cuda.is_available():
+            return "cuda"
+    except ImportError:
+        pass
+    return "cpu"
+
+
 class PoseDetector:
-    def __init__(self, model: str = "yolov8n-pose.pt", conf: float = 0.45):
+    def __init__(
+        self,
+        model: str = "yolov8n-pose.pt",
+        conf: float = 0.45,
+        device: str | None = None,
+        imgsz: int = 320,
+    ):
         from ultralytics import YOLO
+        self._device = device or _auto_device()
         self._model = YOLO(model)
         self._conf = conf
+        self.imgsz = imgsz   # mutable — updated live from GUI
+
+    @property
+    def device(self) -> str:
+        return self._device
 
     def detect(self, frame: np.ndarray) -> tuple[PoseResult | None, np.ndarray]:
         """Returns (pose_result_or_None, annotated_frame)."""
-        results = self._model(frame, verbose=False, conf=self._conf)
+        results = self._model(
+            frame, verbose=False, conf=self._conf,
+            device=self._device, imgsz=self.imgsz,
+        )
         annotated = results[0].plot()
 
         kps = results[0].keypoints
