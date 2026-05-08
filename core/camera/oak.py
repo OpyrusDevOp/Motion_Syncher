@@ -6,6 +6,7 @@ from .base import Camera
 
 try:
     import depthai as dai
+
     _DEPTHAI_AVAILABLE = True
 except ImportError:
     _DEPTHAI_AVAILABLE = False
@@ -13,6 +14,33 @@ except ImportError:
 
 def is_available() -> bool:
     return _DEPTHAI_AVAILABLE
+
+
+def list_devices() -> list[dict]:
+    """
+    Return a list of available OAK devices as dicts:
+        {"mx_id": str, "label": str, "state": str}
+    Returns an empty list if depthai is not installed or no device is found.
+    """
+    if not _DEPTHAI_AVAILABLE:
+        return []
+    try:
+        found = []
+        for dev_info in dai.Device.getAllAvailableDevices():
+            mx_id = dev_info.getDeviceId()
+            name = dev_info.name  # IP address or USB path
+            state = str(dev_info.state).split(".")[-1]  # e.g. "UNBOOTED"
+            found.append(
+                {
+                    "mx_id": mx_id,
+                    "label": f"OAK {mx_id[-6:]} ({name})",
+                    "state": state,
+                }
+            )
+        return found
+    except Exception as exc:
+        print(f"[OAKCamera] device enumeration failed: {exc}")
+        return []
 
 
 class OAKCamera(Camera):
@@ -26,21 +54,27 @@ class OAKCamera(Camera):
         self._queue = None
 
     def open(self) -> None:
-        pipeline = dai.Pipeline()
+        # Create the device once (here with USB speed constraint)
+        device = dai.Device(maxUsbSpeed=dai.UsbSpeed.HIGH)
 
-        cam = pipeline.create(dai.node.ColorCamera)
-        cam.setPreviewSize(640, 480)
-        cam.setInterleaved(False)
-        cam.setColorOrder(dai.ColorCameraProperties.ColorOrder.RGB)
-        cam.setFps(30)
+        # Create a pipeline bound to that device
+        with dai.Pipeline(device) as self._pipeline:
+            cam = self._pipeline.create(dai.node.Camera).build()
 
-        xout = pipeline.create(dai.node.XLinkOut)
-        xout.setStreamName("rgb")
-        cam.preview.link(xout.input)
+            cameraOutput = cam.requestOutput(
+                (1280, 720),
+                type=dai.ImgFrame.Type.NV12,
+                fps=30,
+            )
 
-        device_info = dai.DeviceInfo(self._mx_id) if self._mx_id else None
-        self._device = dai.Device(pipeline, device_info) if device_info else dai.Device(pipeline)
-        self._queue = self._device.getOutputQueue("rgb", maxSize=1, blocking=False)
+        # Store your queue
+        self._queue = cameraOutput.createOutputQueue()
+
+        # If you need to store the device, store this one
+        self._device = device
+
+        # Start the pipeline and begin using the queue
+        self._pipeline.start()
 
     def read(self) -> tuple[bool, np.ndarray | None]:
         if self._queue is None:
@@ -53,10 +87,11 @@ class OAKCamera(Camera):
 
     def close(self) -> None:
         if self._device:
+            self._pipeline.stop()
             self._device.close()
             self._device = None
             self._queue = None
 
     @property
     def name(self) -> str:
-        return f"OAK {self._mx_id or 'default'}"
+        return f"OAK {self._mx_id[-6:] if self._mx_id else 'default'}"

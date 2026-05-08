@@ -5,4 +5,4 @@ numpy>=1.24.0
 pynput>=1.7.6
 # audio playback via system player (mpv, ffplay, or cvlc) — no Python package needed
 # Optional for OAK cameras (Phase B):
-# depthai>=2.24.0
+depthai>=2.24.0

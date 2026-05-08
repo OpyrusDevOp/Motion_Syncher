@@ -3,14 +3,26 @@ import pickle
 from pathlib import Path
 
 from PySide6.QtWidgets import (
-    QMainWindow, QWidget, QHBoxLayout, QVBoxLayout, QSplitter,
-    QTabWidget, QTextEdit, QLabel, QComboBox,
-    QToolBar, QProgressBar, QFileDialog, QMessageBox,
+    QMainWindow,
+    QWidget,
+    QHBoxLayout,
+    QVBoxLayout,
+    QSplitter,
+    QTabWidget,
+    QTextEdit,
+    QLabel,
+    QComboBox,
+    QToolButton,
+    QToolBar,
+    QProgressBar,
+    QFileDialog,
+    QMessageBox,
 )
 from PySide6.QtGui import QAction, QActionGroup
 from PySide6.QtCore import Qt, QTimer, QSettings, QStandardPaths
 
 from core.camera.webcam import WebcamCamera
+from core.camera import oak as oak_module
 from core.choreography.engine import ChoreographyEngine, EngineMode
 from core.choreography.models import Choreography, Pair
 from core.functions import function_from_dict, load_user_plugins
@@ -20,6 +32,9 @@ from gui.widgets.camera_preview import CameraPreviewWidget
 from gui.widgets.action_library import ActionLibraryWidget
 from gui.widgets.choreography_editor import ChoreographyEditorWidget
 from gui.widgets.quick_arm import QuickArmWidget
+
+# Stored in each QComboBox item's UserRole
+_ROLE = Qt.ItemDataRole.UserRole
 
 
 class MainWindow(QMainWindow):
@@ -64,9 +79,9 @@ class MainWindow(QMainWindow):
         tb.setMovable(False)
         self.addToolBar(tb)
 
-        self.act_start  = QAction("▶  Start",  self)
-        self.act_stop   = QAction("⏹  Stop",   self)
-        self.act_reset  = QAction("↺  Reset",  self)
+        self.act_start = QAction("▶  Start", self)
+        self.act_stop = QAction("⏹  Stop", self)
+        self.act_reset = QAction("↺  Reset", self)
         self.act_reload = QAction("⟳  Reload", self)
         self.act_reload.setToolTip("Reload gestures and choreography from disk")
         tb.addAction(self.act_start)
@@ -75,17 +90,33 @@ class MainWindow(QMainWindow):
         tb.addAction(self.act_reset)
         tb.addAction(self.act_reload)
         tb.addSeparator()
+
+        # Camera selector with refresh button
         tb.addWidget(QLabel("  Camera: "))
         self.camera_combo = QComboBox()
-        self.camera_combo.addItems([f"Webcam {i}" for i in range(4)])
+        self.camera_combo.setMinimumWidth(220)
+        self.camera_combo.setToolTip(
+            "Select a camera source.\n"
+            "OAK devices appear here automatically when depthai is installed."
+        )
         tb.addWidget(self.camera_combo)
+
+        self._refresh_cam_btn = QToolButton()
+        self._refresh_cam_btn.setText("⟳")
+        self._refresh_cam_btn.setToolTip("Re-scan for cameras and OAK devices")
+        self._refresh_cam_btn.clicked.connect(self._populate_camera_combo)
+        tb.addWidget(self._refresh_cam_btn)
+
+        self._populate_camera_combo()
 
         # Live indicator — right-aligned via spacer
         spacer = QWidget()
         spacer.setMinimumWidth(20)
         tb.addWidget(spacer)
         self.live_lbl = QLabel("● STOPPED")
-        self.live_lbl.setStyleSheet("color: #c0392b; font-weight: bold; padding-right: 8px;")
+        self.live_lbl.setStyleSheet(
+            "color: #c0392b; font-weight: bold; padding-right: 8px;"
+        )
         tb.addWidget(self.live_lbl)
 
         # --- Quick Arm toolbar ---
@@ -159,14 +190,116 @@ class MainWindow(QMainWindow):
         mode_group.setExclusive(True)
         for label, mode in [
             ("Sequential", EngineMode.SEQUENTIAL),
-            ("Free",       EngineMode.FREE),
-            ("Both",       EngineMode.BOTH),
+            ("Free", EngineMode.FREE),
+            ("Both", EngineMode.BOTH),
         ]:
             act = QAction(label, self, checkable=True)
             act.triggered.connect(lambda checked, m=mode: self.engine.set_mode(m))
             mode_group.addAction(act)
             engine_m.addAction(act)
         mode_group.actions()[0].setChecked(True)
+
+    # ------------------------------------------------------------------
+    # Camera combo population
+    # ------------------------------------------------------------------
+
+    def _populate_camera_combo(self) -> None:
+        """
+        Rebuild the camera combo box:
+          - Webcam 0–3 (always present)
+          - Any OAK devices detected via depthai (when installed)
+
+        Each item carries a dict in UserRole:
+            {"type": "webcam", "index": int}
+            {"type": "oak",    "mx_id": str | None}
+        """
+        prev_data = self.camera_combo.currentData(_ROLE)  # preserve selection
+        self.camera_combo.clear()
+
+        # -- Webcams --
+        for i in range(4):
+            self.camera_combo.addItem(f"Webcam {i}", {"type": "webcam", "index": i})
+
+        # -- OAK devices --
+        oak_devices = oak_module.list_devices()
+        if not oak_module.is_available():
+            # depthai not installed — add a disabled placeholder so users know
+            self.camera_combo.addItem(
+                "OAK (install depthai)", {"type": "oak_unavailable"}
+            )
+            idx = self.camera_combo.count() - 1
+            # Make the entry visually greyed out and non-selectable
+            model = self.camera_combo.model()
+            from PySide6.QtGui import QStandardItem
+
+            item = model.item(idx)
+            if item:
+                from PySide6.QtCore import Qt as _Qt
+
+                item.setFlags(item.flags() & ~_Qt.ItemFlag.ItemIsEnabled)
+        else:
+            if oak_devices:
+                for dev in oak_devices:
+                    label = dev["label"]
+                    self.camera_combo.addItem(
+                        f"⬡ {label}",
+                        {"type": "oak", "mx_id": dev["mx_id"]},
+                    )
+            # Always offer "OAK (auto)" as a fallback for single-device setups
+            self.camera_combo.addItem(
+                "⬡ OAK (auto-detect)",
+                {"type": "oak", "mx_id": None},
+            )
+
+        # Restore previous selection if it still exists
+        if prev_data:
+            for i in range(self.camera_combo.count()):
+                if self.camera_combo.itemData(i, _ROLE) == prev_data:
+                    self.camera_combo.setCurrentIndex(i)
+                    break
+
+        n_oak = len(oak_devices)
+        if oak_module.is_available():
+            tip = (
+                f"{n_oak} OAK device(s) found"
+                if n_oak
+                else "No OAK devices found (auto-detect available)"
+            )
+        else:
+            tip = "depthai not installed — OAK support unavailable"
+        self.statusBar().showMessage(tip, 4000)
+
+    def _make_camera(self):
+        """Instantiate the correct Camera subclass from the current combo selection."""
+        data = self.camera_combo.currentData(_ROLE) or {}
+        cam_type = data.get("type", "webcam")
+
+        if cam_type == "webcam":
+            return WebcamCamera(data.get("index", 0))
+
+        if cam_type == "oak":
+            if not oak_module.is_available():
+                QMessageBox.warning(
+                    self,
+                    "OAK not available",
+                    "depthai is not installed.\n\n"
+                    "Install it with:\n    pip install depthai",
+                )
+                return None
+            from core.camera.oak import OAKCamera
+
+            return OAKCamera(mx_id=data.get("mx_id"))
+
+        if cam_type == "oak_unavailable":
+            QMessageBox.information(
+                self,
+                "OAK support unavailable",
+                "Install depthai to use Luxonis OAK cameras:\n\n"
+                "    pip install depthai\n\nThen restart the app.",
+            )
+            return None
+
+        return WebcamCamera(0)
 
     # ------------------------------------------------------------------
     # Signal wiring
@@ -183,10 +316,8 @@ class MainWindow(QMainWindow):
 
         self.chor_editor.choreography_changed.connect(self._sync_choreography)
         self.chor_editor.choreography_changed.connect(self._schedule_autosave)
-        self.chor_editor.reload_requested.connect(self._manual_reload)
         self.action_lib.gesture_list_changed.connect(self._update_gesture_list)
         self.action_lib.gesture_list_changed.connect(self._schedule_autosave)
-        self.action_lib.reload_requested.connect(self._manual_reload)
 
         self.act_start.triggered.connect(self._start_camera)
         self.act_stop.triggered.connect(self._stop_camera)
@@ -203,17 +334,25 @@ class MainWindow(QMainWindow):
     def _start_camera(self):
         if self.camera_thread.isRunning():
             self.camera_thread.stop()
-        idx = self.camera_combo.currentIndex()
-        self.camera_thread.set_camera(WebcamCamera(idx))
+
+        camera = self._make_camera()
+        if camera is None:
+            return  # user was already warned via a dialog
+
+        self.camera_thread.set_camera(camera)
         self.camera_thread.start()
         self.live_lbl.setText("● LIVE")
-        self.live_lbl.setStyleSheet("color: #27ae60; font-weight: bold; padding-right: 8px;")
-        self.statusBar().showMessage(f"Webcam {idx} started")
+        self.live_lbl.setStyleSheet(
+            "color: #27ae60; font-weight: bold; padding-right: 8px;"
+        )
+        self.statusBar().showMessage(f"{camera.name} started")
 
     def _stop_camera(self):
         self.camera_thread.stop()
         self.live_lbl.setText("● STOPPED")
-        self.live_lbl.setStyleSheet("color: #c0392b; font-weight: bold; padding-right: 8px;")
+        self.live_lbl.setStyleSheet(
+            "color: #c0392b; font-weight: bold; padding-right: 8px;"
+        )
         self.statusBar().showMessage("Camera stopped")
 
     # ------------------------------------------------------------------
@@ -351,7 +490,6 @@ class MainWindow(QMainWindow):
     # ------------------------------------------------------------------
 
     def _schedule_autosave(self) -> None:
-        """Restart the 1 s debounce timer; actual save fires when it expires."""
         self._save_timer.start()
 
     def _manual_reload(self) -> None:
@@ -359,7 +497,9 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage("Reloaded from disk", 3000)
 
     def _auto_data_dir(self) -> Path:
-        base = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
+        base = QStandardPaths.writableLocation(
+            QStandardPaths.StandardLocation.AppDataLocation
+        )
         p = Path(base) / "default"
         p.mkdir(parents=True, exist_ok=True)
         return p
@@ -387,7 +527,7 @@ class MainWindow(QMainWindow):
     def _autoload(self) -> None:
         d = self._auto_data_dir()
         proj_file = d / "project.json"
-        tpl_file  = d / "templates.pkl"
+        tpl_file = d / "templates.pkl"
 
         if tpl_file.exists():
             templates_data: dict = pickle.loads(tpl_file.read_bytes())
@@ -397,7 +537,6 @@ class MainWindow(QMainWindow):
                 for seq in sequences:
                     rec.add_template(name, seq)
 
-        # Always refresh gesture widgets so they reflect in-memory templates
         self._update_gesture_list()
         self.action_lib._refresh_list()
 
@@ -420,29 +559,43 @@ class MainWindow(QMainWindow):
 
     def _save_state(self) -> None:
         s = QSettings()
-        s.setValue("window/geometry",      self.saveGeometry())
-        s.setValue("camera/index",         self.camera_combo.currentIndex())
+        s.setValue("window/geometry", self.saveGeometry())
+        s.setValue("camera/combo_data", self.camera_combo.currentData(_ROLE))
         rec = self.action_lib.recognition_settings()
-        s.setValue("recognition/threshold",   rec["threshold"])
-        s.setValue("recognition/cooldown",    rec["cooldown"])
-        s.setValue("recognition/motion",      rec["motion"])
+        s.setValue("recognition/threshold", rec["threshold"])
+        s.setValue("recognition/cooldown", rec["cooldown"])
+        s.setValue("recognition/motion", rec["motion"])
         s.setValue("performance/skip_frames", rec["skip_frames"])
-        s.setValue("performance/imgsz",       rec["imgsz"])
+        s.setValue("performance/imgsz", rec["imgsz"])
 
     def _restore_state(self) -> None:
         s = QSettings()
         geom = s.value("window/geometry")
         if geom:
             self.restoreGeometry(geom)
-        cam = s.value("camera/index", 0, type=int)
-        if 0 <= cam < self.camera_combo.count():
-            self.camera_combo.setCurrentIndex(cam)
+
+        # Restore camera selection by matching stored data dict
+        saved_data = s.value("camera/combo_data")
+        if saved_data:
+            for i in range(self.camera_combo.count()):
+                if self.camera_combo.itemData(i, _ROLE) == saved_data:
+                    self.camera_combo.setCurrentIndex(i)
+                    break
+        else:
+            # Legacy: old save used camera/index (int) for webcams
+            cam = s.value("camera/index", 0, type=int)
+            for i in range(self.camera_combo.count()):
+                d = self.camera_combo.itemData(i, _ROLE) or {}
+                if d.get("type") == "webcam" and d.get("index") == cam:
+                    self.camera_combo.setCurrentIndex(i)
+                    break
+
         rec = {
-            "threshold":   s.value("recognition/threshold",   0.30, type=float),
-            "cooldown":    s.value("recognition/cooldown",     1.5,  type=float),
-            "motion":      s.value("recognition/motion",       0.02, type=float),
-            "skip_frames": s.value("performance/skip_frames",  2,    type=int),
-            "imgsz":       s.value("performance/imgsz",        320,  type=int),
+            "threshold": s.value("recognition/threshold", 0.30, type=float),
+            "cooldown": s.value("recognition/cooldown", 1.5, type=float),
+            "motion": s.value("recognition/motion", 0.02, type=float),
+            "skip_frames": s.value("performance/skip_frames", 2, type=int),
+            "imgsz": s.value("performance/imgsz", 320, type=int),
         }
         self.action_lib.apply_recognition_settings(rec)
 
