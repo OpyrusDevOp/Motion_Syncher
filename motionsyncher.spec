@@ -189,6 +189,40 @@ a = Analysis(
     noarchive=False,
 )
 
+# ── Filter bloat and prevent patchelf corruption ──────────────────────────────
+# patchelf inflates massive ROCm/CUDA .so files by gigabytes. Since torch wheels
+# already have correct RPATHs, we move them from binaries to datas so PyInstaller
+# copies them unmodified. We also strip C++ headers and test suites.
+def optimize_bundle(binaries, datas):
+    new_binaries = []
+    new_datas = []
+    
+    # 1. Move torch binaries to datas to avoid patchelf
+    for dest, src, type_ in binaries:
+        dest_norm = dest.replace("\\", "/")
+        if "torch" in dest_norm and dest_norm.endswith(".so"):
+            new_datas.append((dest, src, "DATA"))
+        else:
+            new_binaries.append((dest, src, type_))
+            
+    # 2. Filter out bloat from datas
+    for dest, src, type_ in datas:
+        dest_norm = dest.replace("\\", "/")
+        if "/include/" in dest_norm or "/test/" in dest_norm:
+            continue
+        if dest_norm.endswith(".a") or dest_norm.endswith(".pdb"):
+            continue
+        new_datas.append((dest, src, type_))
+        
+    # 3. Deduplicate (datas can sometimes get duplicate entries)
+    unique_datas = {}
+    for dest, src, type_ in new_datas:
+        unique_datas[dest] = (dest, src, type_)
+        
+    return new_binaries, list(unique_datas.values())
+
+a.binaries, a.datas = optimize_bundle(a.binaries, a.datas)
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 # ── Output naming ─────────────────────────────────────────────────────────────
