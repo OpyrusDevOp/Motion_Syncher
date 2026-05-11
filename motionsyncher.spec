@@ -197,10 +197,22 @@ def optimize_bundle(binaries, datas):
     new_binaries = []
     new_datas = []
     
-    # 1. Move torch binaries to datas to avoid patchelf
+    # 1. Fix massive duplication and patchelf bloat
     for dest, src, type_ in binaries:
         dest_norm = dest.replace("\\", "/")
-        if "torch" in dest_norm and dest_norm.endswith(".so"):
+        src_norm = src.replace("\\", "/")
+        
+        # If this shared library originates from the torch package
+        if "/torch/" in src_norm and dest_norm.endswith(".so"):
+            # PyInstaller's dependency analyzer incorrectly copies torch libraries 
+            # to the root _internal directory, duplicating them and exposing them
+            # to patchelf bloat. The torch hook already places the correct copies
+            # inside torch/lib/. So we simply DISCARD the root copies.
+            if "/" not in dest_norm:
+                continue
+                
+            # For the correct copies in torch/lib/, move them to datas so 
+            # PyInstaller doesn't run patchelf on them.
             new_datas.append((dest, src, "DATA"))
         else:
             new_binaries.append((dest, src, type_))
