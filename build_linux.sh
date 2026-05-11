@@ -183,10 +183,53 @@ python3 -m PyInstaller \
 DIST_DIR="dist/MotionSyncher-linux-${BACKEND}"
 
 if [[ -d "$DIST_DIR" ]]; then
+    info "Deduplicating identical files (symlink restoration) …"
+    python3 -c "
+import os, hashlib
+from collections import defaultdict
+
+def get_hash(path):
+    h = hashlib.sha256()
+    with open(path, 'rb') as f:
+        while chunk := f.read(8192*4):
+            h.update(chunk)
+    return h.hexdigest()
+
+dist_dir = '$DIST_DIR'
+size_map = defaultdict(list)
+for root, _, files in os.walk(dist_dir):
+    for f in files:
+        path = os.path.join(root, f)
+        if os.path.isfile(path) and not os.path.islink(path):
+            size_map[os.path.getsize(path)].append(path)
+
+saved_bytes = 0
+for size, paths in size_map.items():
+    if len(paths) < 2 or size == 0: continue
+    hash_map = defaultdict(list)
+    for p in paths:
+        hash_map[get_hash(p)].append(p)
+    for h, p_list in hash_map.items():
+        if len(p_list) > 1:
+            target = p_list[0]
+            for p in p_list[1:]:
+                os.remove(p)
+                os.link(target, p)
+                saved_bytes += size
+print(f'  Saved {saved_bytes / (1024**3):.2f} GB by hardlinking identical files.')
+"
+
+    ARCHIVE_NAME="MotionSyncher-linux-${BACKEND}.tar.xz"
+    info "Compressing to dist/$ARCHIVE_NAME (this may take a few minutes) …"
+    (cd dist && tar -cJf "$ARCHIVE_NAME" "MotionSyncher-linux-${BACKEND}")
+
     EXE_PATH="$DIST_DIR/MotionSyncher-linux-${BACKEND}"
     SIZE=$(du -sh "$DIST_DIR" 2>/dev/null | cut -f1)
+    ARCHIVE_SIZE=$(du -sh "dist/$ARCHIVE_NAME" 2>/dev/null | cut -f1)
+    
     ok "Build complete!"
     ok "  Directory : $DIST_DIR  ($SIZE)"
+    ok "  Archive   : dist/$ARCHIVE_NAME  ($ARCHIVE_SIZE)"
     ok "  Executable: $EXE_PATH"
     echo
     info "Runtime system dependencies the end-user must have installed:"
