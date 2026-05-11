@@ -17,9 +17,21 @@ class PoseResult:
 def _detect_device() -> tuple[str, str]:
     """Return (device_string, human_readable_status)."""
     try:
+        import os
+        if os.environ.get("MS_FORCE_CPU") == "1":
+            return "cpu", "cpu (forced via MS_FORCE_CPU)"
+
         import torch
         if torch.cuda.is_available():
             name = torch.cuda.get_device_name(0)
+            
+            # Check for unsupported AMD GPU architectures (like gfx803 / Polaris)
+            # which crash PyTorch when kernels are missing.
+            props = torch.cuda.get_device_properties(0)
+            arch = getattr(props, "gcnArchName", "")
+            if "gfx803" in arch:
+                return "cpu", f"cpu (ROCm build — {name} is {arch}, which lacks kernels and would crash)"
+            
             return "cuda", f"cuda — {name}"
 
         build = torch.__version__

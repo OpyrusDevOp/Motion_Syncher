@@ -61,7 +61,6 @@ def _collect(pkg: str):
 print("[spec] collecting packages …")
 
 # Packages with upstream hooks — collect_all() still supplements them
-pyside6_d, pyside6_b, pyside6_h = _collect("PySide6")
 numpy_d,   numpy_b,   numpy_h   = _collect("numpy")
 
 # Optional: depthai (OAK cameras — Phase B)
@@ -72,7 +71,7 @@ tv_d, tv_b, tv_h = _collect("torchvision")
 
 # ── Aggregate ─────────────────────────────────────────────────────────────────
 all_datas = (
-    pyside6_d + numpy_d + oak_d + tv_d
+    numpy_d + oak_d + tv_d
     # Bundle the plugins directory so users can add .py plugins post-install.
     # Path resolution in gui/main_window.py:
     #   Path(__file__).parent.parent / "plugins"
@@ -81,10 +80,10 @@ all_datas = (
     + [(_p("plugins"), "plugins")]
 )
 
-all_binaries = pyside6_b + numpy_b + oak_b + tv_b
+all_binaries = numpy_b + oak_b + tv_b
 
 all_hiddenimports = (
-    pyside6_h + numpy_h + oak_h + tv_h
+    numpy_h + oak_h + tv_h
     + collect_submodules("core")    # core.camera, core.har, core.choreography, core.functions
     + collect_submodules("gui")     # gui.widgets.*
     + [
@@ -127,6 +126,7 @@ excludes = [
     "matplotlib",
     "scipy",
     "pandas",
+    "polars",
     "IPython", "ipykernel", "jupyter_client", "notebook",
     "sphinx",
     "pytest", "py.test",
@@ -197,41 +197,44 @@ def optimize_bundle(binaries, datas):
     new_binaries = []
     new_datas = []
     
-    # 1. Fix massive duplication and patchelf bloat
+    # 1. First pass: separate and fix torch shared libraries
     for dest, src, type_ in binaries:
         dest_norm = dest.replace("\\", "/")
         src_norm = src.replace("\\", "/")
         
         # If this shared library originates from the torch package
         if "/torch/" in src_norm and dest_norm.endswith(".so"):
-            # PyInstaller's dependency analyzer incorrectly copies torch libraries 
-            # to the root _internal directory, duplicating them and exposing them
-            # to patchelf bloat. The torch hook already places the correct copies
-            # inside torch/lib/. So we simply DISCARD the root copies.
             if "/" not in dest_norm:
                 continue
-                
-            # For the correct copies in torch/lib/, move them to datas so 
-            # PyInstaller doesn't run patchelf on them.
             new_datas.append((dest, src, "DATA"))
         else:
             new_binaries.append((dest, src, type_))
             
-    # 2. Filter out bloat from datas
-    for dest, src, type_ in datas:
-        dest_norm = dest.replace("\\", "/")
-        if "/include/" in dest_norm or "/test/" in dest_norm:
-            continue
-        if dest_norm.endswith(".a") or dest_norm.endswith(".pdb"):
-            continue
-        new_datas.append((dest, src, type_))
+    # 2. Second pass: filter bloat from both datas and binaries
+    def is_bloat(dest_str):
+        dest_norm = dest_str.replace("\\", "/")
+        if "/include/" in dest_norm or "/test/" in dest_norm: return True
+        if dest_norm.endswith(".a") or dest_norm.endswith(".pdb"): return True
+        if any(arch in dest_norm for arch in ["gfx900", "gfx906", "gfx908", "gfx90a", "gfx940", "gfx941", "gfx942"]): return True
+        if "/aotriton.images/" in dest_norm or "/miopen/db/" in dest_norm: return True
+        return False
+
+    final_binaries = []
+    for dest, src, type_ in new_binaries:
+        if not is_bloat(dest):
+            final_binaries.append((dest, src, type_))
+
+    final_datas = []
+    for dest, src, type_ in (datas + new_datas):
+        if not is_bloat(dest):
+            final_datas.append((dest, src, type_))
         
-    # 3. Deduplicate (datas can sometimes get duplicate entries)
+    # 3. Deduplicate datas
     unique_datas = {}
-    for dest, src, type_ in new_datas:
+    for dest, src, type_ in final_datas:
         unique_datas[dest] = (dest, src, type_)
         
-    return new_binaries, list(unique_datas.values())
+    return final_binaries, list(unique_datas.values())
 
 a.binaries, a.datas = optimize_bundle(a.binaries, a.datas)
 
