@@ -6,8 +6,8 @@
 #   ./build_linux.sh rocm [ROCM_TAG]     e.g.  ./build_linux.sh rocm rocm6.2
 #   ./build_linux.sh cpu
 #
-# CUDA_TAG  defaults to cu124  (CUDA 12.4)
-# ROCM_TAG  defaults to rocm6.2
+# CUDA_TAG  defaults to cu130  (CUDA 12.4)
+# ROCM_TAG  defaults to rocm7.2
 #
 # The script installs the requested torch variant into the active venv (or the
 # system Python if no venv is active), then runs PyInstaller.
@@ -41,8 +41,8 @@ esac
 
 # ── Torch index URLs ──────────────────────────────────────────────────────────
 # Edit these lines to pin a different CUDA / ROCm release.
-DEFAULT_CUDA_TAG="cu124"
-DEFAULT_ROCM_TAG="rocm6.2"
+DEFAULT_CUDA_TAG="cu130"
+DEFAULT_ROCM_TAG="rocm7.2"
 
 CUDA_TAG="${2:-$DEFAULT_CUDA_TAG}"
 ROCM_TAG="${2:-$DEFAULT_ROCM_TAG}"
