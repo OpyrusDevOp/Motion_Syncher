@@ -4,7 +4,7 @@
 #   .\build_windows.ps1 cuda [cu124]
 #   .\build_windows.ps1 cpu
 #
-# CudaTag defaults to cu124 (CUDA 12.4).
+# CudaTag defaults to cu130 (CUDA 13.0).
 # Output lands in  dist\MotionSyncher-windows-<backend>\
 #
 # Requirements:
@@ -20,7 +20,7 @@ param (
     [string]$Backend,
 
     [Parameter(Mandatory = $false, Position = 1)]
-    [string]$CudaTag = "cu124"
+    [string]$CudaTag = "cu130"
 )
 
 Set-StrictMode -Version Latest
